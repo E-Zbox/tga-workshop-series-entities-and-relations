@@ -1,14 +1,12 @@
-// Import necessary types from the Graph TypeScript library for handling big integers and byte arrays.
+// types from the Graph TypeScript library for handling big integers and byte arrays.
 import { BigInt, Bytes } from "@graphprotocol/graph-ts";
-
-// Import the event types that the Graph node will listen to from the smart contract.
+// event types that the Graph node will listen to from the smart contract.
 import {
   Assign,
   PunkBought,
   PunkTransfer,
 } from "../generated/Cryptopunks/Cryptopunks";
-
-// Import the schema definitions that we've defined for our subgraph.
+// schema definitions that we've defined for our subgraph.
 import {
   ArtPurchase,
   ArtTransfer,
@@ -17,66 +15,70 @@ import {
   PremiumCollector,
   PurchasedDigitalArt,
 } from "../generated/schema";
+// helpers
+import {
+  loadOrCreateArtPurchase,
+  loadOrCreateArtTransfer,
+  loadOrCreateCollector,
+  loadOrCreateDigitalArt,
+  loadOrCreatePremiumCollector,
+  loadOrCreatePurchasedDigitalArt,
+} from "./helpers";
 
 // Function to handle 'Assign' events emitted by the contract.
 export function handleAssign(event: Assign): void {
   // Convert the 'to' address from the event to a hex string to use as the collector's ID.
-  let collectorId = event.params.to.toHexString();
+  const collectorId = event.params.to.toHexString();
 
-  // Attempt to load an existing collector from the subgraph by ID. If none exists, `null` is returned.
-  let collector = Collector.load(collectorId);
+  // Attempt to load an existing or create a new Collector from the subgraph by ID.
+  const collector = loadOrCreateCollector(collectorId);
 
-  // If the collector does not already exist, create a new one with the given ID.
-  if (!collector) {
-    collector = new Collector(collectorId); // Instantiate a new Collector entity with the collectorId.
-    collector.walletAddress = event.params.to; // Set the wallet address of the collector to the 'to' parameter from the event.
-    collector.save(); // Save the new collector entity to the subgraph.
-  }
+  // Set the wallet address of the collector to the 'to' parameter from the event.
+  collector.walletAddress = event.params.to;
+  collector.save(); // Save the collector entity to the subgraph.
 
-  // Attempt to load an existing DigitalArt entity by using the punkIndex as its ID.
-  let digitalArt = DigitalArt.load(event.params.punkIndex.toString());
+  // convert the punkIndex from the event to string
+  const digitalArtId = event.params.punkIndex.toString();
+  // Attempt to load an existing or create a new DigitalArt entity by using the punkIndex as its ID.
+  const digitalArt = loadOrCreateDigitalArt(digitalArtId);
 
-  // If the digital art does not already exist, create a new one.
-  if (!digitalArt) {
-    digitalArt = new DigitalArt(event.params.punkIndex.toString()); // Create a new DigitalArt entity with the punkIndex as its ID.
-    digitalArt.tokenId = event.params.punkIndex; // Set the tokenId of the digital art to the punkIndex from the event.
-    digitalArt.owner = collector.id; // Set the owner of the digital art to the ID of the collector.
-    digitalArt.save(); // Save the new digital art entity to the subgraph.
-  }
+  digitalArt.tokenId = event.params.punkIndex; // Set the tokenId of the digital art to the punkIndex from the event.
+  digitalArt.owner = collector.id; // Set the owner of the digital art to the ID of the collector.
+  digitalArt.save(); // Save the new digital art entity to the subgraph.
 }
+
+/**
+ *
+ * [10:50, 11:08] of TGA - 3 Entities & Relations
+ * have an entity that tracks NFT purchase amount and NFT owner using Transfer and PunkTransfer events
+ */
 
 // Define a function to handle 'PunkTransfer' events emitted by the Cryptopunks contract.
 export function handlePunkTransfer(event: PunkTransfer): void {
   // Convert the punkIndex from the event to a string to use as the digital art's ID.
-  let digitalArtId = event.params.punkIndex.toString();
+  const digitalArtId = event.params.punkIndex.toString();
 
   // Attempt to load an existing DigitalArt entity by its ID.
-  let digitalArt = DigitalArt.load(digitalArtId);
+  const digitalArt = loadOrCreateDigitalArt(digitalArtId);
 
-  // If the digital art does not exist (which shouldn't happen if 'Assign' events are handled), create it.
-  if (!digitalArt) {
-    digitalArt = new DigitalArt(digitalArtId); // Instantiate a new DigitalArt entity.
-    digitalArt.tokenId = event.params.punkIndex; // Set its tokenId.
-  }
+  // Set its tokenId.
+  digitalArt.tokenId = event.params.punkIndex;
 
   // Retrieve the old owner's ID from the digital art entity.
-  let oldCollectorId = digitalArt.owner;
+  const oldCollectorId = digitalArt.owner;
 
   // Convert the new owner's address to a hex string to use as their ID.
-  let newCollectorId = event.params.to.toHexString();
+  const newCollectorId = event.params.to.toHexString();
 
   // Attempt to load an existing collector (the new owner) from the subgraph by ID.
-  let newCollector = Collector.load(newCollectorId);
+  let newCollector = loadOrCreateCollector(newCollectorId);
 
-  // If the new collector does not already exist, create a new one.
-  if (!newCollector) {
-    newCollector = new Collector(newCollectorId); // Instantiate a new Collector entity.
-    newCollector.walletAddress = event.params.to; // Set the wallet address.
-    newCollector.save(); // Persist the new collector entity to the subgraph.
-  }
+  newCollector.walletAddress = event.params.to; // Set the wallet address.
+  newCollector.save(); // Persist the new collector entity to the subgraph.
 
   // Create a new ArtTransfer entity to record the transfer of the digital art.
-  let transfer = new ArtTransfer(event.transaction.hash.toHexString()); // Use the transaction hash as the ID for uniqueness.
+  const transferId = event.transaction.hash.toHexString();
+  let transfer = loadOrCreateArtTransfer(transferId); // Use the transaction hash as the ID for uniqueness.
   transfer.art = digitalArtId; // Associate the transfer with the digital art.
   transfer.oldOwner = Bytes.fromHexString(oldCollectorId); // Record the old owner. Requires conversion from string to Bytes.
   transfer.newOwner = event.params.to; // Record the new owner's address.
@@ -98,38 +100,31 @@ export function handlePunkBought(event: PunkBought): void {
   // let's define PremiumCollector entity
   const premiumCollectorId = event.params.toAddress.toHexString();
 
-  let premiumCollector = PremiumCollector.load(premiumCollectorId);
+  const premiumCollector = loadOrCreatePremiumCollector(premiumCollectorId);
 
-  if (!premiumCollector) {
-    premiumCollector = new PremiumCollector(premiumCollectorId);
-    premiumCollector.whoAreYou = event.params.toAddress;
-    premiumCollector.save();
-  }
+  premiumCollector.whoAreYou = event.params.toAddress;
+  premiumCollector.save();
 
   // let's define PurchasedDigitalArt entity
   const purchasedDigitalArtId = event.params.punkIndex.toString();
 
-  let purchasedDigitalArt = PurchasedDigitalArt.load(purchasedDigitalArtId);
+  const purchasedDigitalArt = loadOrCreatePurchasedDigitalArt(
+    purchasedDigitalArtId
+  );
 
-  if (!purchasedDigitalArt) {
-    purchasedDigitalArt = new PurchasedDigitalArt(purchasedDigitalArtId);
-    purchasedDigitalArt.tokenId = BigInt.fromString(purchasedDigitalArtId);
-    purchasedDigitalArt.owner = premiumCollectorId;
-    purchasedDigitalArt.save();
-  }
+  purchasedDigitalArt.tokenId = BigInt.fromString(purchasedDigitalArtId);
+  purchasedDigitalArt.owner = premiumCollectorId;
+  purchasedDigitalArt.save();
 
   // let's define ArtPurchase entity
   const artPurchaseId = event.transaction.hash.toHexString();
 
-  let artPurchase = ArtPurchase.load(artPurchaseId);
+  const artPurchase = loadOrCreateArtPurchase(artPurchaseId);
 
-  if (!artPurchase) {
-    artPurchase = new ArtPurchase(artPurchaseId);
-    artPurchase.art = purchasedDigitalArtId;
-    artPurchase.oldOwner = event.params.fromAddress;
-    artPurchase.newOwner = event.params.toAddress;
-    artPurchase.price = event.params.value;
-    artPurchase.timestamp = event.block.timestamp;
-    artPurchase.save();
-  }
+  artPurchase.art = purchasedDigitalArtId;
+  artPurchase.oldOwner = event.params.fromAddress;
+  artPurchase.newOwner = event.params.toAddress;
+  artPurchase.price = event.params.value;
+  artPurchase.timestamp = event.block.timestamp;
+  artPurchase.save();
 }
