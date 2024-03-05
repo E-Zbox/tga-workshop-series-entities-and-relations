@@ -38,9 +38,11 @@ type PurchasedDigitalArt @entity {
   history: [ArtPurchase!]! @derivedFrom(field: "art")
 }
 
-type ArtTransfer @entity {
+type ArtTransfer @entity(immutable: true) {
   # Unique identifier for an art transfer event, typically a combination of block number and log index.
   id: ID!
+  # amount spent during this transaction 💰😎
+  amount: BigInt!
   # The piece of digital art being transferred.
   art: DigitalArt!
   # The collector sending the art.
