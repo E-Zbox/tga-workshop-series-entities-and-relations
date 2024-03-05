@@ -330,6 +330,19 @@ export class ArtTransfer extends Entity {
     this.set("id", Value.fromString(value));
   }
 
+  get amount(): BigInt {
+    let value = this.get("amount");
+    if (!value || value.kind == ValueKind.NULL) {
+      throw new Error("Cannot return null for a required field.");
+    } else {
+      return value.toBigInt();
+    }
+  }
+
+  set amount(value: BigInt) {
+    this.set("amount", Value.fromBigInt(value));
+  }
+
   get art(): string {
     let value = this.get("art");
     if (!value || value.kind == ValueKind.NULL) {
